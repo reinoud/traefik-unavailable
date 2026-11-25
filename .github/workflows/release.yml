@@ -1,0 +1,93 @@
+# Bouwt bij elke gepubliceerde release het image voor amd64 en arm64.
+# Tag v1.2.3 levert 1.2.3 en 1; een prerelease krijgt alleen zijn eigen tag.
+# Volgorde: push zonder tag (alleen digest), Trivy en SBOM per platform op die digest, daarna pas de tags.
+# Zo krijgt precies het gescande image de tags; critical of high met een oplossing stopt de release.
+# Actions staan op een commit-SHA; Dependabot houdt ze bij, en Trivy via Dockerfile.trivy.
+name: Release
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+env:
+  IMAGE: ghcr.io/${{ github.repository_owner }}/traefik-unavailable
+
+jobs:
+  image:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        with:
+          images: ${{ env.IMAGE }}
+          flavor: latest=false
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}
+      - id: bouw
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          labels: ${{ steps.meta.outputs.labels }}
+          outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
+      - name: Trivy en SBOM per platform
+        env:
+          TRIVY_USERNAME: ${{ github.actor }}
+          TRIVY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+          DIGEST: ${{ steps.bouw.outputs.digest }}
+          VERSIE: ${{ steps.meta.outputs.version }}
+        run: |
+          trivy="$(awk '/^FROM/ {print $2}' Dockerfile.trivy)"
+          for arch in amd64 arm64; do
+            docker run --rm -e TRIVY_USERNAME -e TRIVY_PASSWORD "$trivy" image --platform "linux/$arch" \
+              --ignore-unfixed --severity CRITICAL,HIGH --exit-code 1 "$IMAGE@$DIGEST"
+            f="traefik-unavailable-$VERSIE-$arch.cdx.json"
+            docker run --rm -e TRIVY_USERNAME -e TRIVY_PASSWORD "$trivy" image --platform "linux/$arch" \
+              --format cyclonedx "$IMAGE@$DIGEST" > "$f"
+            jq -e '.bomFormat == "CycloneDX" and (.components | length > 0)' "$f"
+          done
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: sbom
+          path: ./*.cdx.json
+          if-no-files-found: error
+          overwrite: true  # een herhaalde poging uploadt opnieuw
+      - name: Tags op het gescande image
+        env:
+          DIGEST: ${{ steps.bouw.outputs.digest }}
+        run: |
+          mapfile -t tags < <(jq -r '.tags[] | "-t", .' <<< "$DOCKER_METADATA_OUTPUT_JSON")
+          docker buildx imagetools create "${tags[@]}" "$IMAGE@$DIGEST"
+
+  # Na de tags, zodat de release alleen een SBOM krijgt van een image dat in ghcr.io staat.
+  # Mislukt deze job, draai hem dan opnieuw; --clobber vervangt een half geüploade bijlage.
+  sbom:
+    needs: image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: sbom
+      - name: Bijlage bij de release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.release.tag_name }}
+        run: gh release upload "$TAG" ./*.cdx.json --clobber --repo "$GITHUB_REPOSITORY"
