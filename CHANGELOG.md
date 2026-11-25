@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.0.0 (nog niet uitgebracht)
+## 1.0.0 (2026-11-25)
 
 Eerste versie (#1).
 
