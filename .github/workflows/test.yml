@@ -1,0 +1,18 @@
+# Bouwt het image (de Go-tests draaien in de Dockerfile) en test het gestarte container.
+name: Test
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: docker build -t traefik-unavailable:test .
+      - run: sh test/container.sh traefik-unavailable:test

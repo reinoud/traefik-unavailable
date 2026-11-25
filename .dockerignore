@@ -1,0 +1,4 @@
+# Alleen wat de build nodig heeft; .git, werk/ en de rest blijven buiten de context.
+*
+!go.mod
+!*.go

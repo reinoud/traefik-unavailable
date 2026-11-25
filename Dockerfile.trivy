@@ -1,0 +1,2 @@
+# Alleen om de versie van Trivy vast te pinnen; Dependabot houdt hem bij. Gebruikt in .github/workflows/release.yml.
+FROM aquasec/trivy:0.76.2@sha256:8f6bb947dbc528902e11f2f5be52f7b519f6a39d5d148f41166f2040499768fb
