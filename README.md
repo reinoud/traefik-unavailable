@@ -84,4 +84,4 @@ docker build -t traefik-unavailable:test .
 sh test/container.sh traefik-unavailable:test
 ```
 
-De Go-tests draaien tijdens `docker build`. `test/container.sh` start het image alleen-lezen, zonder capabilities en met `no-new-privileges`, en controleert het van buitenaf. Een release (`.github/workflows/release.yml`) scant het image per platform met Trivy en zet per platform een SBOM in CycloneDX JSON bij de release. De keuze voor de basis staat in [docs/adr/0001-basis.md](docs/adr/0001-basis.md).
+De Go-tests draaien tijdens `docker build`. `test/container.sh` start het image alleen-lezen, zonder capabilities en met `no-new-privileges`, en controleert het van buitenaf. Een release (`.github/workflows/release.yml`) scant het image per platform met Trivy en zet per platform een SBOM in CycloneDX JSON bij de release. De workflow start pas als de GitHub-release gepubliceerd is. Stopt Trivy de release, dan krijgt het image geen tag en de release geen SBOM, maar de release en de git-tag blijven staan: zet de release dan terug op concept. De keuze voor de basis staat in [docs/adr/0001-basis.md](docs/adr/0001-basis.md).
